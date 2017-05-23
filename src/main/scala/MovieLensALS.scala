@@ -17,52 +17,44 @@ object MovieLensALS {
     Logger.getLogger("org.apache.spark").setLevel(Level.WARN)
     Logger.getLogger("org.eclipse.jetty.server").setLevel(Level.OFF)
 
-    // set up environment
-
     val conf = new SparkConf()
       .setAppName("MovieLensALS")
-      .set("spark.executor.memory", "2g")
+      .set("spark.executor.memory", "4g")
     val sc = new SparkContext(conf)
 
     // load personal ratings
 
-    // val rawPersonalRatings = sc.textFile("personalRatings.csv")
-    // val personalRatingsNoHeader = rawPersonalRatings.filter(x => !isHeader("userId", x))
-    // val personalRatings = personalRatingsNoHeader.map { line =>
-    //   val fields = line.split(",")
-    //   // format: Rating(userId, movieId, rating)
-    //   Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble)
-    // }
+    val personalRatings = Source.fromFile("personalRatings.txt").getLines()
+      .map { line =>
+        val fields = line.split(",")
+        Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble)
+      }.filter(_.rating > 0.0).toSeq
 
-    val personalRatings = loadRatings("personalRatings.txt")
     val personalRatingsRDD = sc.parallelize(personalRatings, 1)
 
     // load ratings and movie titles
 
-    val rawRatings = sc.textFile("ml-latest-small/ratings.csv")
-    val ratingsNoHeader = rawRatings.filter(x => !isHeader("userId", x))
+    val ratings = sc.textFile("ml-latest-small/ratings.csv")
+      .filter(x => !isHeader("userId", x))
+      .map { line =>
+        val fields = line.split(",")
+        // format: (timestamp % 10, Rating(userId, movieId, rating))
+        (fields(3).toLong % 10, Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble))
+      }
 
-    val ratings = ratingsNoHeader.map { line =>
-      val fields = line.split(",")
-      // format: (timestamp % 10, Rating(userId, movieId, rating))
-      (fields(3).toLong % 10, Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble))
-  }
-
-    val rawMovies = sc.textFile("ml-latest-small/movies.csv")
-    val moviesNoHeader = rawMovies.filter(x => !isHeader("movieId", x))
-
-    val movies = moviesNoHeader.map { line =>
-      val fields = line.split(",")
-      // format: (movieId, movieName)
-      (fields(0).toInt, fields(1))
-    }.collect().toMap
+    val movies = sc.textFile("ml-latest-small/movies.csv")
+      .filter(x => !isHeader("movieId", x))
+      .map { line =>
+        val fields = line.split(",")
+        // format: (movieId, movieName)
+        (fields(0).toInt, fields(1))
+      }.collect().toMap
 
     val numRatings = ratings.count
     val numUsers = ratings.map(_._2.user).distinct.count
     val numMovies = ratings.map(_._2.product).distinct.count
 
-    println("Got " + numRatings + " ratings from "
-      + numUsers + " users on " + numMovies + " movies.")
+    println(s"Got $numRatings ratings from $numUsers users on $numMovies movies.")
 
     val numPartitions = 4
     val training = ratings.filter(x => x._1 < 6)
@@ -80,7 +72,7 @@ object MovieLensALS {
     val numValidation = validation.count()
     val numTest = test.count()
 
-    println("Training: " + numTraining + ", validation: " + numValidation + ", test: " + numTest)
+    println(s"Training: $numTraining, validation: $numValidation, test: $numTest")
 
     // TRAINING
 
@@ -95,8 +87,7 @@ object MovieLensALS {
     for (rank <- ranks; lambda <- lambdas; numIter <- numIters) {
       val model = ALS.train(training, rank, numIter, lambda)
       val validationRmse = computeRmse(model, validation, numValidation)
-      println("RMSE (validation) = " + validationRmse + " for the model trained with rank = "
-        + rank + ", lambda = " + lambda + ", and numIter = " + numIter + ".")
+      println(s"RMSE (validation) = $validationRmse for the model trained with rank = $rank, lambda = $lambda, and numIter = $numIter.")
       if (validationRmse < bestValidationRmse) {
         bestModel = Some(model)
         bestValidationRmse = validationRmse
@@ -116,7 +107,7 @@ object MovieLensALS {
       .predict(candidates.map((0, _)))
       .collect()
       .sortBy(- _.rating)
-      .take(50)
+      .take(10)
 
     var i = 1
     println("Movies recommended for you:")
@@ -140,19 +131,5 @@ object MovieLensALS {
       .join(data.map(x => ((x.user, x.product), x.rating)))
       .values
     math.sqrt(predictionsAndRatings.map(x => (x._1 - x._2) * (x._1 - x._2)).reduce(_ + _) / n)
-    }
-
-  /** Load ratings from file. */
-  def loadRatings(path: String): Seq[Rating] = {
-    val lines = Source.fromFile(path).getLines()
-    val ratings = lines.map { line =>
-        val fields = line.split(",")
-        Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble)
-    }.filter(_.rating > 0.0)
-    if (ratings.isEmpty) {
-        sys.error("No ratings provided.")
-    } else {
-        ratings.toSeq
-    }
   }
 }
