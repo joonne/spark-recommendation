@@ -1,0 +1,26 @@
+------------
+
+RMSE (validation) = 1.310174248209293 for the model trained with rank = 8, lambda = 1.0, and numIter = 20.
+RMSE (validation) = 3.6224146773459305 for the model trained with rank = 8, lambda = 10.0, and numIter = 10.
+RMSE (validation) = 3.6224146773459305 for the model trained with rank = 8, lambda = 10.0, and numIter = 20.
+RMSE (validation) = 1.3101699684444514 for the model trained with rank = 12, lambda = 1.0, and numIter = 10.
+RMSE (validation) = 1.3101744185970643 for the model trained with rank = 12, lambda = 1.0, and numIter = 20.
+RMSE (validation) = 3.6224146773459305 for the model trained with rank = 12, lambda = 10.0, and numIter = 10.
+RMSE (validation) = 3.6224146773459305 for the model trained with rank = 12, lambda = 10.0, and numIter = 20.
+The best model was trained with rank = 8 and lambda = 1.0 and numIter = 10 and its RMSE on the test set is 1.3141962976684316 .
+
+------------
+
+Got 20000263 ratings from 138493 users on 26744 movies.
+Training: 12001100, validation: 3997861, test: 4001324
+RMSE (validation) = 0.8135177464427812 for the model trained with rank = 8, lambda = 0.1, and numIter = 10.
+RMSE (validation) = 0.8109219668290578 for the model trained with rank = 8, lambda = 0.1, and numIter = 20.
+RMSE (validation) = 0.8118562546350115 for the model trained with rank = 8, lambda = 0.1, and numIter = 10.
+RMSE (validation) = 0.8110622600294632 for the model trained with rank = 8, lambda = 0.1, and numIter = 20.
+RMSE (validation) = 0.8082045893435458 for the model trained with rank = 12, lambda = 0.1, and numIter = 10.
+RMSE (validation) = 0.8079551955371009 for the model trained with rank = 12, lambda = 0.1, and numIter = 20.
+RMSE (validation) = 0.8124189114634026 for the model trained with rank = 12, lambda = 0.1, and numIter = 10.
+RMSE (validation) = 0.8073841435135528 for the model trained with rank = 12, lambda = 0.1, and numIter = 20.
+The best model was trained with rank = 12 and lambda = 0.1 and numIter = 20 and its RMSE on the test set is 0.8071669083077276 .
+
+------------

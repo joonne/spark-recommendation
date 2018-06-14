@@ -1,9 +1,21 @@
 # spark-recommendation #
 
-## Compile
+### compile
 
-```sbt package```
+```sh
+sbt package
+```
 
-## Run
+### run
 
-```~/Applications/spark-2.1.0-bin-hadoop2.7/bin/spark-submit --class "MovieLensALS" --master local[4] target/scala-2.11/movielens-recommendations_2.11-1.0.jar```
+```sh
+spark-submit --class "MovieLensALS" --master local[4] target/scala-2.11/movielens-recommendations_2.11-1.0.jar
+```
+
+## AWS EMR
+
+> aws s3 cp target/scala-2.11/movielens-recommendations_2.11-1.0.jar s3://movielens-recommendation/movielens-recommendations_2.11-1.0.jar
+
+> aws s3 cp s3://movielens-recommendation/movielens-recommendations_2.11-1.0.jar .
+
+> spark-submit ./movielens-recommendations_2.11-1.0.jar

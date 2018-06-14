@@ -1,16 +1,10 @@
 import java.io.File
 
-import scala.io.Source
+import org.apache.log4j.{Logger, Level}
 
-import org.apache.log4j.Logger
-import org.apache.log4j.Level
-
-import org.apache.spark.SparkConf
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd._
-import org.apache.spark.mllib.recommendation.ALS
-import org.apache.spark.mllib.recommendation.Rating
-import org.apache.spark.mllib.recommendation.MatrixFactorizationModel
+import org.apache.spark.mllib.recommendation.{ALS, Rating, MatrixFactorizationModel}
 
 object MovieLensALS {
   def main(args: Array[String]) {
@@ -19,31 +13,28 @@ object MovieLensALS {
 
     val conf = new SparkConf()
       .setAppName("MovieLensALS")
-      .set("spark.executor.memory", "4g")
-    val sc = new SparkContext(conf)
+    implicit val sc = new SparkContext(conf)
 
     // load personal ratings
 
-    val personalRatings = Source.fromFile("personalRatings.txt").getLines()
+    val personalRatings = sc.textFile("s3n://movielens-recommendation/personalRatings.txt")
       .map { line =>
         val fields = line.split(",")
         Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble)
-      }.filter(_.rating > 0.0).toSeq
-
-    val personalRatingsRDD = sc.parallelize(personalRatings, 1)
+      }.filter(_.rating > 0.0)
 
     // load ratings and movie titles
 
-    val ratings = sc.textFile("ml-latest-small/ratings.csv")
-      .filter(x => !isHeader("userId", x))
+    val ratings = sc.textFile("s3n://movielens-recommendation/ml-20m/ratings.csv")
+      .filter(!isHeader("userId", _))
       .map { line =>
         val fields = line.split(",")
         // format: (timestamp % 10, Rating(userId, movieId, rating))
         (fields(3).toLong % 10, Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble))
       }
 
-    val movies = sc.textFile("ml-latest-small/movies.csv")
-      .filter(x => !isHeader("movieId", x))
+    val movies = sc.textFile("s3n://movielens-recommendation/ml-20m/movies.csv")
+      .filter(!isHeader("movieId", _))
       .map { line =>
         val fields = line.split(",")
         // format: (movieId, movieName)
@@ -59,14 +50,18 @@ object MovieLensALS {
     val numPartitions = 4
     val training = ratings.filter(x => x._1 < 6)
       .values
-      .union(personalRatingsRDD)
+      .union(personalRatings)
       .repartition(numPartitions)
       .cache()
+
     val validation = ratings.filter(x => x._1 >= 6 && x._1 < 8)
       .values
       .repartition(numPartitions)
       .cache()
-    val test = ratings.filter(x => x._1 >= 8).values.cache()
+
+    val test = ratings.filter(x => x._1 >= 8)
+      .values
+      .cache()
 
     val numTraining = training.count()
     val numValidation = validation.count()
@@ -76,45 +71,55 @@ object MovieLensALS {
 
     // TRAINING
 
-    val ranks = List(8, 12)
-    val lambdas = List(1.0, 10.0)
-    val numIters = List(10, 20)
+    val cached = MatrixFactorizationModel.load(sc, "movieLensRecommender")
     var bestModel: Option[MatrixFactorizationModel] = None
-    var bestValidationRmse = Double.MaxValue
-    var bestRank = 0
-    var bestLambda = -1.0
-    var bestNumIter = -1
-    for (rank <- ranks; lambda <- lambdas; numIter <- numIters) {
-      val model = ALS.train(training, rank, numIter, lambda)
-      val validationRmse = computeRmse(model, validation, numValidation)
-      println(s"RMSE (validation) = $validationRmse for the model trained with rank = $rank, lambda = $lambda, and numIter = $numIter.")
-      if (validationRmse < bestValidationRmse) {
-        bestModel = Some(model)
-        bestValidationRmse = validationRmse
-        bestRank = rank
-        bestLambda = lambda
-        bestNumIter = numIter
+
+    if (Option(cached).isDefined) {
+      bestModel = Option(cached)
+    } else {
+      val ranks = List(8, 12)
+      val lambdas = List(0.1, 0.1)
+      val numIters = List(10, 20)
+      var bestValidationRmse = Double.MaxValue
+      var bestRank = 0
+      var bestLambda = -1.0
+      var bestNumIter = -1
+      for (rank <- ranks; lambda <- lambdas; numIter <- numIters) {
+        val model = ALS.train(training, rank, numIter, lambda)
+        val validationRmse = computeRmse(model, validation, numValidation)
+        println(s"RMSE (validation) = $validationRmse for the model trained with rank = $rank, lambda = $lambda, and numIter = $numIter.")
+        if (validationRmse < bestValidationRmse) {
+          bestModel = Some(model)
+          bestValidationRmse = validationRmse
+          bestRank = rank
+          bestLambda = lambda
+          bestNumIter = numIter
+        }
       }
+
+      val testRmse = computeRmse(bestModel.get, test, numTest)
+
+      println(s"The best model was trained with rank = $bestRank and lambda = $bestLambda and numIter = $bestNumIter and its RMSE on the test set is $testRmse .")
+
+      println("Saving model...")
+
+      bestModel.get.save(sc, "movieLensRecommender")
     }
 
-    val testRmse = computeRmse(bestModel.get, test, numTest)
+    // val myRatedMovieIds = personalRatings.map(_.product).take(10)
+    // val candidates = movies.keys.filter(!myRatedMovieIds.contains(_))
+    // val recommendations = bestModel.get
+    //   .predict(candidates.map((0, _)))
+    //   .collect()
+    //   .sortBy(- _.rating)
+    //   .take(10)
 
-    println(s"The best model was trained with rank = $bestRank and lambda = $bestLambda and numIter = $bestNumIter and its RMSE on the test set is $testRmse .")
-
-    val myRatedMovieIds = personalRatings.map(_.product).toSet
-    val candidates = sc.parallelize(movies.keys.filter(!myRatedMovieIds.contains(_)).toSeq)
-    val recommendations = bestModel.get
-      .predict(candidates.map((0, _)))
-      .collect()
-      .sortBy(- _.rating)
-      .take(10)
-
-    var i = 1
-    println("Movies recommended for you:")
-    recommendations.foreach { r =>
-      println("%2d".format(i) + ": " + movies(r.product))
-      i += 1
-    }
+    // var i = 1
+    // println("Movies recommended for you:")
+    // recommendations.foreach { r =>
+    //   println("%2d".format(i) + ": " + movies(r.product))
+    //   i += 1
+    // }
 
     // clean up
     sc.stop()
