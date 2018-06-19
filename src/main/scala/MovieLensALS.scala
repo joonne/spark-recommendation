@@ -23,18 +23,20 @@ object MovieLensALS {
         Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble)
       }.filter(_.rating > 0.0)
 
-    // load ratings and movie titles
+    // load ratings
 
     val ratings = sc.textFile("s3n://movielens-recommendation/ml-20m/ratings.csv")
-      .filter(!isHeader("userId", _))
+      .filter(!isHeader("userId")(_))
       .map { line =>
         val fields = line.split(",")
         // format: (timestamp % 10, Rating(userId, movieId, rating))
         (fields(3).toLong % 10, Rating(fields(0).toInt, fields(1).toInt, fields(2).toDouble))
       }
 
+    // load movies
+
     val movies = sc.textFile("s3n://movielens-recommendation/ml-20m/movies.csv")
-      .filter(!isHeader("movieId", _))
+      .filter(!isHeader("movieId")(_))
       .map { line =>
         val fields = line.split(",")
         // format: (movieId, movieName)
@@ -71,12 +73,12 @@ object MovieLensALS {
 
     // TRAINING
 
-    val cached = MatrixFactorizationModel.load(sc, "movieLensRecommender")
+    // val cached = MatrixFactorizationModel.load(sc, "movieLensRecommender")
     var bestModel: Option[MatrixFactorizationModel] = None
 
-    if (Option(cached).isDefined) {
-      bestModel = Option(cached)
-    } else {
+    // if (Option(cached).isDefined) {
+    //   bestModel = Option(cached)
+    // } else {
       val ranks = List(8, 12)
       val lambdas = List(0.1, 0.1)
       val numIters = List(10, 20)
@@ -103,33 +105,38 @@ object MovieLensALS {
 
       println("Saving model...")
 
-      bestModel.get.save(sc, "movieLensRecommender")
-    }
-
-    // val myRatedMovieIds = personalRatings.map(_.product).take(10)
-    // val candidates = movies.keys.filter(!myRatedMovieIds.contains(_))
-    // val recommendations = bestModel.get
-    //   .predict(candidates.map((0, _)))
-    //   .collect()
-    //   .sortBy(- _.rating)
-    //   .take(10)
-
-    // var i = 1
-    // println("Movies recommended for you:")
-    // recommendations.foreach { r =>
-    //   println("%2d".format(i) + ": " + movies(r.product))
-    //   i += 1
+    //   bestModel.get.save(sc, "movieLensRecommender")
     // }
+
+    val myRatedMovieIds = personalRatings.map(_.product).collect()
+    val candidates = sc.parallelize(
+      movies.keys
+        .filter(!myRatedMovieIds.contains(_))
+        .map((0, _))
+        .toSeq
+    )
+    val recommendations = bestModel.get
+      .predict(candidates)
+      .collect()
+      .sortBy(- _.rating)
+      .take(10)
+
+    var i = 1
+    println("Movies recommended for you:")
+    recommendations.foreach { r =>
+      println("%2d".format(i) + ": " + movies(r.product))
+      i += 1
+    }
 
     // clean up
     sc.stop()
   }
 
-  def isHeader(headerId: String, line: String): Boolean = {
+  def isHeader(headerId: String)(line: String): Boolean = {
     line.contains(headerId)
   }
 
-  /** Compute RMSE (Root Mean Squared Error). */
+  // Compute RMSE (Root Mean Squared Error)
   def computeRmse(model: MatrixFactorizationModel, data: RDD[Rating], n: Long): Double = {
     val predictions: RDD[Rating] = model.predict(data.map(x => (x.user, x.product)))
     val predictionsAndRatings = predictions.map(x => ((x.user, x.product), x.rating))

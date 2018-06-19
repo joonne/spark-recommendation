@@ -24,3 +24,17 @@ RMSE (validation) = 0.8073841435135528 for the model trained with rank = 12, lam
 The best model was trained with rank = 12 and lambda = 0.1 and numIter = 20 and its RMSE on the test set is 0.8071669083077276 .
 
 ------------
+
+Movies recommended for you:
+ 1: The War at Home (1979)
+ 2: Pearl Jam: Immagine in Cornice - Live in Italy 2006 (2007)
+ 3: "Octopus
+ 4: My Brother Tom (2001)
+ 5: Return to the 36th Chamber (Shao Lin da peng da shi) (1980) 
+ 6: Bob Funk (2009)
+ 7: Hamoun (1990)
+ 8: "Notebook
+ 9: Patton Oswalt: My Weakness Is Strong (2009)
+10: Deathstalker II (1987)
+
+-------------
