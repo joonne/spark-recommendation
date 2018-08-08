@@ -71,42 +71,32 @@ object MovieLensALS {
 
     println(s"Training: $numTraining, validation: $numValidation, test: $numTest")
 
-    // TRAINING
+    // training
 
-    // val cached = MatrixFactorizationModel.load(sc, "movieLensRecommender")
     var bestModel: Option[MatrixFactorizationModel] = None
-
-    // if (Option(cached).isDefined) {
-    //   bestModel = Option(cached)
-    // } else {
-      val ranks = List(8, 12)
-      val lambdas = List(0.1, 0.1)
-      val numIters = List(10, 20)
-      var bestValidationRmse = Double.MaxValue
-      var bestRank = 0
-      var bestLambda = -1.0
-      var bestNumIter = -1
-      for (rank <- ranks; lambda <- lambdas; numIter <- numIters) {
-        val model = ALS.train(training, rank, numIter, lambda)
-        val validationRmse = computeRmse(model, validation, numValidation)
-        println(s"RMSE (validation) = $validationRmse for the model trained with rank = $rank, lambda = $lambda, and numIter = $numIter.")
-        if (validationRmse < bestValidationRmse) {
-          bestModel = Some(model)
-          bestValidationRmse = validationRmse
-          bestRank = rank
-          bestLambda = lambda
-          bestNumIter = numIter
-        }
+    val ranks = List(8, 12)
+    val lambdas = List(0.01, 0.1, 1, 2, 3)
+    val numIters = List(1, 3, 5, 15, 20)
+    var bestValidationRmse = Double.MaxValue
+    var bestRank = 0
+    var bestLambda = -1.0
+    var bestNumIter = -1
+    for (rank <- ranks; lambda <- lambdas; numIter <- numIters) {
+      val model = ALS.train(training, rank, numIter, lambda)
+      val validationRmse = computeRmse(model, validation, numValidation)
+      println(s"RMSE (validation) = $validationRmse for the model trained with rank = $rank, lambda = $lambda, and numIter = $numIter.")
+      if (validationRmse < bestValidationRmse) {
+        bestModel = Some(model)
+        bestValidationRmse = validationRmse
+        bestRank = rank
+        bestLambda = lambda
+        bestNumIter = numIter
       }
+    }
 
-      val testRmse = computeRmse(bestModel.get, test, numTest)
+    val testRmse = computeRmse(bestModel.get, test, numTest)
 
-      println(s"The best model was trained with rank = $bestRank and lambda = $bestLambda and numIter = $bestNumIter and its RMSE on the test set is $testRmse .")
-
-      println("Saving model...")
-
-    //   bestModel.get.save(sc, "movieLensRecommender")
-    // }
+    println(s"The best model was trained with rank = $bestRank and lambda = $bestLambda and numIter = $bestNumIter and its RMSE on the test set is $testRmse .")
 
     val myRatedMovieIds = personalRatings.map(_.product).collect()
     val candidates = sc.parallelize(
@@ -115,6 +105,7 @@ object MovieLensALS {
         .map((0, _))
         .toSeq
     )
+
     val recommendations = bestModel.get
       .predict(candidates)
       .collect()
